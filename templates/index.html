@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Digital Twin Fermentasi</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Arial;
+    display: flex;
+    background: #eef2f7;
+}
+
+/* SIDEBAR */
+.sidebar {
+    width: 230px;
+    background: linear-gradient(180deg, #1e293b, #0f172a);
+    color: white;
+    height: 100vh;
+    padding: 20px;
+}
+
+.sidebar p {
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.sidebar p:hover {
+    background: #334155;
+}
+
+/* MAIN */
+.main { flex: 1; display: flex; }
+
+/* SECTION */
+.section { display: none; width: 100%; }
+.active { display: flex; }
+
+/* TANGKI */
+.tank-area {
+    flex: 2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.tank {
+    width: 220px;
+    height: 320px;
+    border-radius: 25px;
+    border: 6px solid #334155;
+    position: relative;
+    overflow: hidden;
+    background: #e2e8f0;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+.liquid {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    background: linear-gradient(180deg, #d4a373, #b08968);
+    transition: 0.5s;
+    overflow: hidden;
+}
+
+/* 🌊 animasi gelombang */
+.liquid::before {
+    content: "";
+    position: absolute;
+    width: 200%;
+    height: 200%;
+    top: -150%;
+    left: -50%;
+    background: rgba(255,255,255,0.2);
+    border-radius: 40%;
+    animation: wave 5s linear infinite;
+}
+
+@keyframes wave {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.temp-label {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-weight: bold;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 5px;
+}
+
+/* PANEL */
+.panel { flex: 1; padding: 20px; }
+
+/* CARD */
+.card {
+    background: white;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 15px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+}
+
+/* INPUT */
+input {
+    width: 100%;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    margin-top: 5px;
+}
+
+/* BUTTON */
+button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 8px;
+    border-radius: 8px;
+    border: none;
+    background: linear-gradient(90deg, #3b82f6, #2563eb);
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* STATUS */
+.green { color: #16a34a; font-weight: bold; }
+.orange { color: #f59e0b; font-weight: bold; }
+.red { color: #dc2626; font-weight: bold; }
+
+/* 🚨 alarm */
+.alarm {
+    animation: blink 0.6s infinite;
+}
+
+@keyframes blink {
+    0% { background: red; color: white; }
+    50% { background: transparent; color: red; }
+    100% { background: red; color: white; }
+}
+
+/* TABLE */
+table { width:100%; border-collapse: collapse; }
+th { background:#1e293b; color:white; }
+th, td { padding:8px; border:1px solid #ddd; }
+tr:nth-child(even){ background:#f1f5f9; }
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+    <h2>Digital Twin</h2>
+    <p onclick="showPage('dashboard')" id="menu-dashboard">Dashboard</p>
+    <p onclick="showPage('simulasi')" id="menu-simulasi">Simulasi</p>
+    <p onclick="showPage('data')" id="menu-data">Data</p>
+</div>
+
+<div class="main">
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="section active">
+    <div class="tank-area">
+        <div class="tank">
+            <div id="tempLabel" class="temp-label">-- °C</div>
+            <div id="liquid" class="liquid"></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="card">
+            <h3>Status</h3>
+            <p id="status">-</p>
+        </div>
+
+        <div class="card">
+            <h3>Fase</h3>
+            <p id="fase">-</p>
+        </div>
+    </div>
+</div>
+
+<!-- SIMULASI -->
+<div id="simulasi" class="section">
+    <div class="tank-area">
+        <div class="tank">
+            <div id="tempLabel2" class="temp-label">-- °C</div>
+            <div id="liquid2" class="liquid"></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="card">
+            <form id="form">
+                <input type="number" name="suhu" placeholder="Suhu Lingkungan" required>
+                <input type="number" name="waktu" value="120">
+                <button type="submit">Simulasi</button>
+            </form>
+            <button onclick="startRealtime()">Real-Time</button>
+        </div>
+
+        <div class="card">
+            <canvas id="grafik"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- DATA -->
+<div id="data" class="section">
+    <div class="panel" style="width:100%">
+        <div class="card">
+            <table id="tableData">
+                <thead>
+                    <tr><th>Waktu</th><th>Suhu</th><th>Status</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+</div>
+
+<script>
+
+let chart, interval;
+
+// NAVIGASI
+function showPage(id){
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+
+    document.querySelectorAll('.sidebar p').forEach(p=>p.style.background="");
+    document.getElementById("menu-"+id).style.background="#334155";
+}
+
+// SIMULASI
+document.getElementById("form").onsubmit = async(e)=>{
+    e.preventDefault();
+    clearInterval(interval);
+
+    const res = await fetch("/simulate",{method:"POST",body:new FormData(e.target)});
+    const data = await res.json();
+
+    updateUI(data[data.length-1]);
+    updateChart(data);
+    updateTable(data);
+};
+
+// REALTIME
+async function startRealtime(){
+    clearInterval(interval);
+
+    const res = await fetch("/realtime");
+    const data = await res.json();
+
+    let i=0;
+
+    chart = new Chart(document.getElementById("grafik"),{
+        type:"line",
+        data:{labels:[],datasets:[{label:"Realtime",data:[]}]}
+    });
+
+    interval = setInterval(()=>{
+        if(i>=data.length){clearInterval(interval);return;}
+        let p=data[i];
+
+        chart.data.labels.push(p.waktu);
+        chart.data.datasets[0].data.push(p.suhu);
+        chart.update();
+
+        updateUI(p);
+        i++;
+    },500);
+}
+
+// UPDATE UI
+function updateUI(d){
+
+    document.getElementById("tempLabel").innerText=d.suhu+"°C";
+    document.getElementById("liquid").style.height=(d.suhu*2)+"%";
+
+    document.getElementById("tempLabel2").innerText=d.suhu+"°C";
+    document.getElementById("liquid2").style.height=(d.suhu*2)+"%";
+
+    let s=document.getElementById("status");
+    s.className="";
+
+    if(d.suhu>=28&&d.suhu<=32){
+        s.innerText="OPTIMAL";
+        s.classList.add("green");
+    }
+    else if(d.suhu<28){
+        s.innerText="TERLALU DINGIN";
+        s.classList.add("orange","alarm");
+    }
+    else{
+        s.innerText="TERLALU PANAS";
+        s.classList.add("red","alarm");
+    }
+
+    let f=document.getElementById("fase");
+    if(d.waktu<24) f.innerText="Fase Awal";
+    else if(d.waktu<72) f.innerText="Fase Aktif";
+    else f.innerText="Fase Selesai";
+}
+
+// CHART
+function updateChart(data){
+    if(chart) chart.destroy();
+    chart=new Chart(document.getElementById("grafik"),{
+        type:"line",
+        data:{
+            labels:data.map(x=>x.waktu),
+            datasets:[{label:"Suhu",data:data.map(x=>x.suhu)}]
+        }
+    });
+}
+
+// TABLE
+function updateTable(data){
+    let tbody=document.querySelector("#tableData tbody");
+    tbody.innerHTML="";
+    data.forEach(d=>{
+        tbody.innerHTML+=`<tr><td>${d.waktu}</td><td>${d.suhu}</td><td>${d.status??'-'}</td></tr>`;
+    });
+}
+
+</script>
+
+</body>
+</html>
