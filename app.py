@@ -1,102 +1,203 @@
 from flask import Flask, render_template, request, jsonify
 import random
 
+# ================= IMPORT SENSOR =================
+try:
+    from sensor import baca_suhu
+except:
+    def baca_suhu():
+        return round(random.uniform(27, 32), 2)
+
 app = Flask(__name__)
 
-
-# =========================
-# HALAMAN UTAMA
-# =========================
-@app.route("/")
+# ================= HALAMAN UTAMA =================
+@app.route('/')
 def index():
-    return render_template("index.html")
+    return render_template('index.html')
 
 
-# =========================
-# SIMULASI NORMAL
-# =========================
-@app.route("/simulate", methods=["POST"])
-def simulate():
-    suhu_lingkungan = float(request.form["suhu"])
-    waktu_total = int(request.form["waktu"])
+# =================================================
+# STATUS SUHU
+# =================================================
 
+def get_status(suhu):
+
+    if 28 <= suhu <= 32:
+        return "OPTIMAL"
+
+    elif suhu < 28:
+        return "TERLALU DINGIN"
+
+    else:
+        return "TERLALU PANAS"
+
+
+# =================================================
+# METODE LAMA
+# RANDOM BIASA
+# =================================================
+
+def metode_lama(suhu_awal, waktu_total):
+
+    suhu = suhu_awal
     data = []
-    suhu_internal = 30  # suhu awal tangki
 
-    for t in range(waktu_total + 1):
+    for t in range(waktu_total):
 
-        # perpindahan panas sederhana
-        suhu_internal += 0.05 * (suhu_lingkungan - suhu_internal)
-
-        # panas fermentasi aktif
-        if 24 <= t <= 72:
-            suhu_internal += 0.02
-
-        # event diskrit
-        if t == 20:
-            suhu_internal -= 2   # penambahan nira
-
-        if t == 50:
-            suhu_internal += 3   # fermentasi puncak
-
-        # status suhu
-        if 28 <= suhu_internal <= 32:
-            status = "OPTIMAL"
-        elif suhu_internal < 28:
-            status = "TERLALU DINGIN"
-        else:
-            status = "TERLALU PANAS"
+        # perubahan random
+        suhu += random.uniform(-1.5, 1.5)
 
         data.append({
             "waktu": t,
-            "suhu": round(suhu_internal, 2),
-            "status": status
+            "suhu": round(suhu, 2),
+            "status": get_status(suhu)
         })
 
-    return jsonify(data)
+    return data
 
 
-# =========================
-# MODE SENSOR REAL-TIME
-# =========================
-@app.route("/realtime")
+# =================================================
+# METODE BARU
+# MOVING AVERAGE
+# =================================================
+
+def moving_average(data, window=3):
+
+    hasil = []
+
+    for i in range(len(data)):
+
+        if i < window - 1:
+            hasil.append(data[i])
+
+        else:
+            avg = sum(data[i-window+1:i+1]) / window
+            hasil.append(avg)
+
+    return hasil
+
+
+def metode_baru_ma(suhu_awal, waktu_total):
+
+    suhu = suhu_awal
+
+    data_suhu = []
+    hasil = []
+
+    for t in range(waktu_total):
+
+        # simulasi perubahan suhu
+        suhu += random.uniform(-1.5, 1.5)
+
+        data_suhu.append(suhu)
+
+        # hitung moving average
+        ma = moving_average(data_suhu)[-1]
+
+        hasil.append({
+            "waktu": t,
+            "suhu": round(ma, 2),
+            "status": get_status(ma)
+        })
+
+    return hasil
+
+
+# =================================================
+# ANALISIS PERBANDINGAN
+# =================================================
+
+def hitung_fluktuasi(data):
+
+    total = 0
+
+    for i in range(1, len(data)):
+
+        selisih = abs(data[i]["suhu"] - data[i-1]["suhu"])
+        total += selisih
+
+    return round(total / len(data), 2)
+
+
+# =================================================
+# PERBANDINGAN METODE
+# =================================================
+
+@app.route('/compare', methods=['POST'])
+def compare():
+
+    # ================= INPUT SUHU =================
+
+    if request.form.get('suhu'):
+
+        suhu_awal = float(request.form['suhu'])
+        sumber = "MANUAL"
+
+    else:
+
+        suhu_awal = baca_suhu()
+        sumber = "SENSOR"
+
+    waktu = int(request.form['waktu'])
+
+    # ================= METODE =================
+
+    metode1 = metode_lama(suhu_awal, waktu)
+    metode2 = metode_baru_ma(suhu_awal, waktu)
+
+    # ================= ANALISIS =================
+
+    fluktuasi_lama = hitung_fluktuasi(metode1)
+    fluktuasi_baru = hitung_fluktuasi(metode2)
+
+    if fluktuasi_baru < fluktuasi_lama:
+        kesimpulan = "Moving Average lebih stabil"
+    else:
+        kesimpulan = "Metode lama lebih stabil"
+
+    return jsonify({
+
+        "sumber_suhu": sumber,
+        "suhu_awal": suhu_awal,
+
+        "metode_lama": metode1,
+        "metode_baru": metode2,
+
+        "analisis": {
+            "fluktuasi_metode_lama": fluktuasi_lama,
+            "fluktuasi_moving_average": fluktuasi_baru,
+            "kesimpulan": kesimpulan
+        }
+    })
+
+
+# =================================================
+# REALTIME
+# =================================================
+
+@app.route('/realtime')
 def realtime():
+
+    suhu = baca_suhu()
+
     data = []
 
-    suhu_lingkungan = 30
-    suhu_internal = 30
+    for t in range(50):
 
-    for t in range(100):
-
-        # pengaruh lingkungan
-        suhu_internal += 0.05 * (suhu_lingkungan - suhu_internal)
-
-        # panas fermentasi
-        if 20 <= t <= 60:
-            suhu_internal += 0.03
-
-        # noise sensor agar realistis
-        suhu_internal += random.uniform(-0.3, 0.3)
-
-        # status
-        if 28 <= suhu_internal <= 32:
-            status = "OPTIMAL"
-        elif suhu_internal < 28:
-            status = "TERLALU DINGIN"
-        else:
-            status = "TERLALU PANAS"
+        suhu += random.uniform(-1, 1)
 
         data.append({
             "waktu": t,
-            "suhu": round(suhu_internal, 2),
-            "status": status
+            "suhu": round(suhu, 2),
+            "status": get_status(suhu)
         })
 
     return jsonify(data)
 
 
-# =========================
-# RUN APP
-# =========================
-if __name__ == "__main__":
+# =================================================
+# RUN SERVER
+# =================================================
+
+if __name__ == '__main__':
     app.run(debug=True)
